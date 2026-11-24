@@ -199,3 +199,47 @@ Halaman sumber menandai foto sebagai foto gratis di bawah Unsplash License: http
 Repository menyertakan source, migrasi, aset kategori, serta lockfile Composer dan npm. Runtime portable, dependency hasil instalasi, database, unggahan pengguna, kredensial admin, konfigurasi lokal, dan kunci Web Push disimpan di komputer/server masing-masing.
 
 Untuk pemasangan baru: clone repository, jalankan composer install, salin .env.example menjadi .env, lalu ikuti langkah penyiapan di atas. Gunakan PHP 8.4+ yang tersedia di PATH atau sediakan runtime portable sendiri. Jalankan npm ci hanya bila ingin menjalankan pengujian browser. Jangan menyalin APP_KEY atau kunci Web Push dari instalasi lain ke repository; simpan backup privat secara terpisah.
+## Menjalankan dengan Docker
+
+Docker menggunakan PHP 8.4 + Apache dengan document root public serta service scheduler terpisah. Instal Docker Engine/Desktop dan Docker Compose terlebih dahulu.
+
+Dari folder proyek, salin konfigurasi contoh (jangan unggah docker.env):
+~~~powershell
+Copy-Item docker.env.example docker.env
+docker compose --env-file docker.env up -d --build --wait
+~~~
+
+Buka http://localhost:8080. Untuk akses LAN, ubah DOCKER_BIND_ADDRESS menjadi 0.0.0.0 dan DOCKER_APP_URL menjadi alamat server, lalu jalankan perintah up kembali. Pengaturan bawaan hanya membuka port pada localhost. Untuk HTTPS di server, tempatkan reverse proxy TLS di depan aplikasi dan atur URL serta DOCKER_SESSION_SECURE_COOKIE=true.
+
+Instalasi Docker memakai volume terpisah; database dan akun pada instalasi Windows tidak otomatis disalin. Buat admin baru:
+~~~text
+docker compose --env-file docker.env exec --user www-data app php artisan portal:admin admin@kantor.local --generate
+~~~
+Kredensial acak disimpan di storage/app/private/initial-admin.txt pada volume container. Baca hanya pada terminal pribadi:
+~~~text
+docker compose --env-file docker.env exec --user www-data app cat storage/app/private/initial-admin.txt
+~~~
+Gunakan email tersebut pada kolom Username admin. Jangan menyalin isi berkas ini ke issue GitHub atau log publik.
+
+APP_KEY dibuat sekali saat volume pertama kali diinisialisasi. Kuncinya disimpan pada storage/app/private/docker-app-key dan dibaca bersama oleh app, scheduler, serta perintah Artisan. Kunci Web Push juga dibuat lokal tanpa subject; setelah HTTPS siap, jalankan portal:push-setup --subject=https://DOMAIN-PORTAL melalui exec app. APP_KEY dan data tetap sama saat container dibuat ulang. DOCKER_APP_KEY bersifat opsional untuk pemulihan data lama; nilai yang berbeda dari kunci volume yang sudah ada ditolak.
+
+Volume portal_storage menyimpan foto, sesi, cache, dan kunci privat. Volume portal_database menyimpan database SQLite. Nama volume mendapat awalan nama project Compose. Jangan menggunakan down -v untuk penghentian biasa karena opsi tersebut menghapus volume. Gunakan:
+~~~text
+docker compose --env-file docker.env down
+docker compose --env-file docker.env up -d --wait
+docker compose --env-file docker.env logs --tail=100 app scheduler
+~~~
+
+Build mengabaikan .env, docker.env, database lokal, foto privat, runtime Windows, dependency host, dan arsip backup. Dependency produksi diinstal dari composer.lock. Perubahan source memerlukan build ulang. Scheduler otomatis menangani penghapusan pengumuman dan Web Push; jangan menjalankan scheduler kedua terhadap volume yang sama.
+
+### Backup dan pemulihan Docker
+
+Skrip backup-project.ps1 mencadangkan source dan instalasi lokal Windows. Data pada volume Docker memerlukan backup Docker tambahan:
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/backup-docker.ps1 -EnvFile docker.env
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/backup-project.ps1
+~~~
+backup-docker.ps1 menghentikan app/scheduler project yang dipilih, menyimpan image serta kedua volume ke folder backup saudara dengan izin terbatas, menguji restore ke volume sementara, memeriksa SQLite/foto dan checksum semua file storage, lalu menjalankan kembali service yang sebelumnya aktif. Pastikan manifest.json berstatus verified dan restore-test.json berstatus passed. Snapshot sebelumnya tetap dipertahankan. Untuk project Compose bernama lain, tambahkan -ProjectName NAMA. Jangan mengunggah arsip tersebut ke GitHub.
+
+Pemulihan dilakukan pada instalasi Compose kosong atau volume baru: docker load --input PATH/docker-image.tar, tag image dengan ID pada manifest menjadi landing-page-portal-wifi:local, lalu docker compose create untuk membuat container dan volume kosong tanpa menjalankannya. Ekstrak storage.tar dan database.tar ke volume masing-masing dengan container sementara menggunakan image yang dipulihkan dan entrypoint tar. Jangan mengekstrak ke volume yang masih berisi data operasional. Setelah itu jalankan docker compose up -d --no-build --wait. Kunci dan database harus berasal dari snapshot yang sama. Periksa nama volume melalui docker volume inspect dan label com.docker.compose.project sebelum memulihkan data.
+Seluruh perintah Artisan melalui exec sebaiknya memakai --user www-data agar file yang dihasilkan tetap dapat dibaca aplikasi. Backup Docker juga menyimpan container-environment.json (privat) sebagai acuan variabel lingkungan dan port saat pemulihan. Berkas ini dapat berisi konfigurasi sensitif; simpan bersama arsip privat, jangan unggah ke GitHub. Gunakan konfigurasi tersebut bersama docker.env dari backup source saat menyiapkan ulang instalasi.

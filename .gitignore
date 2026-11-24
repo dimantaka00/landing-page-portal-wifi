@@ -51,3 +51,4 @@ Thumbs.db
 **/auth.json
 /storage/app/private/*
 !/storage/app/private/.gitignore
+/docker.env

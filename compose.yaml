@@ -1,0 +1,64 @@
+name: landing-page-portal-wifi
+
+x-portal: &portal
+  image: landing-page-portal-wifi:local
+  build:
+    context: .
+    target: production
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 75s
+  environment: &portal-environment
+    APP_NAME: Portal Pusdatin Kemensos RI
+    APP_ENV: production
+    APP_DEBUG: "false"
+    APP_URL: ${DOCKER_APP_URL:-http://localhost:8080}
+    APP_LOCALE: id
+    APP_FALLBACK_LOCALE: en
+    PORTAL_APP_KEY: ${DOCKER_APP_KEY:-}
+    DB_CONNECTION: sqlite
+    DB_DATABASE: /var/www/html/database/data/database.sqlite
+    DB_FOREIGN_KEYS: "true"
+    SESSION_COOKIE: portal_wifi_docker_session
+    SESSION_DRIVER: file
+    SESSION_ENCRYPT: "true"
+    SESSION_LIFETIME: "60"
+    SESSION_SECURE_COOKIE: ${DOCKER_SESSION_SECURE_COOKIE:-false}
+    CACHE_STORE: file
+    QUEUE_CONNECTION: sync
+    FILESYSTEM_DISK: local
+    LOG_CHANNEL: stderr
+    LOG_LEVEL: warning
+    MAIL_MAILER: log
+  volumes:
+    - portal_storage:/var/www/html/storage
+    - portal_database:/var/www/html/database/data
+
+services:
+  app:
+    <<: *portal
+    environment:
+      <<: *portal-environment
+      CONTAINER_ROLE: web
+    ports:
+      - "${DOCKER_BIND_ADDRESS:-127.0.0.1}:${DOCKER_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1/up') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  scheduler:
+    <<: *portal
+    environment:
+      <<: *portal-environment
+      CONTAINER_ROLE: scheduler
+    command: ["php", "artisan", "schedule:work", "--no-interaction"]
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  portal_storage:
+  portal_database:
