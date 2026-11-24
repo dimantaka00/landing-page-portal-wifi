@@ -30,12 +30,13 @@ class AdminAuthController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5)) {
             throw ValidationException::withMessages([$field => 'Terlalu banyak percobaan. Coba lagi dalam '.RateLimiter::availableIn($key).' detik.']);
         }
-        if (! Auth::attempt([$credentialField => $identifier, 'password' => $input['password'], 'is_admin' => true])) {
+        if (! Auth::attempt([$credentialField => $identifier, 'password' => $input['password'], 'is_admin' => true, 'is_active' => true])) {
             RateLimiter::hit($key, 60);
             throw ValidationException::withMessages([$field => 'Username atau kata sandi tidak sesuai.']);
         }
         RateLimiter::clear($key);
         $request->session()->regenerate();
+        $request->session()->put('admin_auth_version', $request->user()->auth_version);
 
         return redirect()->intended(route('admin.announcements.index'));
     }

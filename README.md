@@ -243,3 +243,12 @@ backup-docker.ps1 menghentikan app/scheduler project yang dipilih, menyimpan ima
 
 Pemulihan dilakukan pada instalasi Compose kosong atau volume baru: docker load --input PATH/docker-image.tar, tag image dengan ID pada manifest menjadi landing-page-portal-wifi:local, lalu docker compose create untuk membuat container dan volume kosong tanpa menjalankannya. Ekstrak storage.tar dan database.tar ke volume masing-masing dengan container sementara menggunakan image yang dipulihkan dan entrypoint tar. Jangan mengekstrak ke volume yang masih berisi data operasional. Setelah itu jalankan docker compose up -d --no-build --wait. Kunci dan database harus berasal dari snapshot yang sama. Periksa nama volume melalui docker volume inspect dan label com.docker.compose.project sebelum memulihkan data.
 Seluruh perintah Artisan melalui exec sebaiknya memakai --user www-data agar file yang dihasilkan tetap dapat dibaca aplikasi. Backup Docker juga menyimpan container-environment.json (privat) sebagai acuan variabel lingkungan dan port saat pemulihan. Berkas ini dapat berisi konfigurasi sensitif; simpan bersama arsip privat, jangan unggah ke GitHub. Gunakan konfigurasi tersebut bersama docker.env dari backup source saat menyiapkan ulang instalasi.
+## Pengaturan pengguna dashboard
+
+Administrator dapat membuka Pengaturan pengguna pada sidebar untuk menambahkan nama, username, email, peran, status aktif, dan password baru (minimal 12 karakter dengan konfirmasi). Login dapat memakai username atau email. Password tidak ditampilkan kembali dan disimpan sebagai hash. Password kosong pada halaman edit mempertahankan password yang ada.
+
+Administrator dapat mengelola akun dan pengumuman. Pengelola pengumuman dapat mengelola konten dan melihat log penghapusan, tanpa akses pengaturan akun. Akun admin yang sudah ada mendapat akses pengelolaan pengguna saat migrasi dijalankan. Akun yang dibuat melalui portal:admin juga mendapat akses administrator.
+
+Penonaktifan akun, penggantian password, atau perubahan akses mencabut sesi lama pada permintaan berikutnya, termasuk akses foto draf. Administrator tidak dapat menonaktifkan atau menurunkan peran akun yang sedang dipakai. Untuk pemulihan akses melalui server, gunakan perintah portal:admin dengan email akun yang bersangkutan.
+
+Pada Docker, build ulang lalu jalankan Compose agar migrasi terbaru diterapkan. Kredensial akun instalasi lokal maupun password pengguna tidak disertakan dalam repository. Uji alur pengguna melalui node tests/browser/users.cjs menggunakan server lokal di 127.0.0.1:8011.

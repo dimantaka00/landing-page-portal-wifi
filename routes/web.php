@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAnnouncementController;
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminDeletionLogController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\PortalNotificationController;
 use App\Http\Controllers\PublicAnnouncementController;
 use Illuminate\Support\Facades\Route;
@@ -24,5 +25,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::get('/', fn () => redirect()->route('admin.announcements.index'))->name('dashboard');
     Route::post('/logout', [AdminAuthController::class, 'destroy'])->name('logout');
     Route::get('deletion-logs', [AdminDeletionLogController::class, 'index'])->name('deletion-logs.index');
+    Route::resource('users', AdminUserController::class)->only(['index', 'create', 'store', 'edit', 'update'])->middleware('manage-users');
     Route::resource('announcements', AdminAnnouncementController::class)->except('show');
 });

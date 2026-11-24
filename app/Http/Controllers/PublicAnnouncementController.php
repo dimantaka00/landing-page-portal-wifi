@@ -45,7 +45,10 @@ class PublicAnnouncementController extends Controller
     public function photo(Request $request, AnnouncementPhoto $photo): StreamedResponse
     {
         $visible = Announcement::published()->whereKey($photo->announcement_id)->exists();
-        abort_unless($visible || $request->user()?->is_admin, 404);
+        $user = $request->user()?->refresh();
+        $adminPreview = $user?->is_admin && $user->is_active
+            && (int) $request->session()->get('admin_auth_version', 0) === $user->auth_version;
+        abort_unless($visible || $adminPreview, 404);
         abort_unless(Storage::disk('local')->exists($photo->path), 404);
 
         return Storage::disk('local')->response($photo->path, null, [

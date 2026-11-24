@@ -26,6 +26,9 @@ class User extends Authenticatable
     {
         return [
             'is_admin' => 'boolean',
+            'is_active' => 'boolean',
+            'can_manage_users' => 'boolean',
+            'auth_version' => 'integer',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];

@@ -21,7 +21,7 @@ Artisan::command('portal:admin {email} {--name=Administrator} {--generate : Simp
         return 1;
     }
     $user = User::firstOrNew(['email' => $email]);
-    $user->forceFill(['name' => $this->option('name'), 'password' => Hash::make($password), 'is_admin' => true])->save();
+    $user->forceFill(['name' => $this->option('name'), 'password' => Hash::make($password), 'is_admin' => true, 'is_active' => true, 'can_manage_users' => true, 'auth_version' => ($user->auth_version ?? 0) + 1])->save();
     if ($this->option('generate')) {
         $path = 'initial-admin.txt';
         Storage::disk('local')->put($path, "Akses admin portal kantor\nEmail: {$email}\nKata sandi: {$password}\n\nSimpan secara privat. Ganti kata sandi dengan php artisan portal:admin {$email}\n");
