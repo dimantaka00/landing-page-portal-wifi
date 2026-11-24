@@ -1,0 +1,178 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { chromium } = require('@playwright/test');
+
+(async () => {
+  const root = path.resolve(__dirname, '../..');
+  fs.mkdirSync(path.join(root, '.cache'), { recursive: true });
+  const base = process.env.PORTAL_TEST_URL || 'http://127.0.0.1:8011';
+  const credentials = fs.readFileSync(path.join(root, 'storage/app/private/initial-admin.txt'), 'utf8');
+  const username = credentials.match(/^Username: (.+)$/m)?.[1].trim() || credentials.match(/^Email: (.+)$/m)[1].trim();
+  const password = credentials.match(/^Kata sandi: (.+)$/m)[1].trim();
+  const browser = await chromium.launch({ headless: true, channel: process.env.E2E_BROWSER_CHANNEL || 'chrome' });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  const errors = [];
+  const external = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('request', request => { if (!request.url().startsWith(base) && !request.url().startsWith('blob:')) external.push(request.url()); });
+  let editUrl;
+  const assertNoOverflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Horizontal overflow');
+  const login = async () => {
+    await page.goto(base + '/admin/login');
+    if (new URL(page.url()).pathname !== '/admin/login') return;
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: path.join(root, '.cache/portal-login-desktop.png'), fullPage: true });
+    await page.getByLabel('Username admin').fill(username);
+    await page.getByLabel('Kata sandi', { exact: true }).fill(password);
+    await Promise.all([page.waitForURL('**/admin/announcements'), page.getByRole('button', { name: 'Masuk ke dashboard' }).click()]);
+  };
+  try {
+    await page.goto(base);
+    await page.getByRole('heading', { name: 'Pengumuman kantor' }).waitFor();
+    const gallery = page.getByRole('region', { name: 'Galeri Kementerian Sosial' });
+    await gallery.getByRole('button', { name: 'Lanjutkan slideshow' }).waitFor();
+    assert.equal(await gallery.locator('[data-ministry-slide]:visible').count(), 1);
+    await gallery.getByRole('button', { name: 'Berikutnya' }).click();
+    assert.equal(await gallery.getAttribute('data-current-slide'), '1');
+    await gallery.getByRole('button', { name: 'Sebelumnya' }).click();
+    assert.equal(await gallery.getAttribute('data-current-slide'), '0');
+    await gallery.getByRole('button', { name: 'Tampilkan foto Cawang' }).click();
+    assert.equal(await gallery.getByRole('button', { name: 'Tampilkan foto Cawang' }).getAttribute('aria-current'), 'true');
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await gallery.getAttribute('data-current-slide'), '0');
+    await gallery.getByRole('button', { name: 'Lanjutkan slideshow' }).click();
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => document.querySelector('[data-ministry-carousel]').dataset.currentSlide === '1', null, { timeout: 7000 });
+    await gallery.getByRole('button', { name: 'Jeda slideshow' }).click();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await gallery.getByRole('button', { name: 'Jeda slideshow' }).waitFor();
+    await page.getByRole('heading', { name: 'Pengumuman kantor' }).click();
+    await gallery.getByRole('button', { name: 'Jeda slideshow' }).click();
+    await gallery.getByRole('button', { name: 'Lanjutkan slideshow' }).waitFor();
+    const pausedSlide = await gallery.getAttribute('data-current-slide');
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(5300);
+    assert.equal(await gallery.getAttribute('data-current-slide'), pausedSlide, 'Paused slideshow must stay on selected photo');
+    assert.equal(await gallery.locator('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByLabel('Tema tampilan', { exact: true }).selectOption('dark');
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    await page.reload();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    await page.evaluate(() => Promise.all([...document.images].map(image => { image.loading = 'eager'; return image.decode().catch(() => {}); })));
+    await page.screenshot({ path: path.join(root, '.cache/portal-vercel-dark.png'), fullPage: true });
+    await page.getByLabel('Tema tampilan', { exact: true }).selectOption('system');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+    assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
+    await page.getByLabel('Tema tampilan', { exact: true }).selectOption('light');
+    await page.locator('.portal-menu summary').click();
+    assert.equal(await page.locator('.portal-menu').getAttribute('open'), '');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.portal-menu').getAttribute('open'), null);
+    await page.evaluate(() => document.fonts.ready);
+    for (const width of [320, 393, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await assertNoOverflow();
+    }
+    await assertNoOverflow();
+    await page.screenshot({ path: path.join(root, '.cache/portal-public-desktop.png'), fullPage: true });
+    await page.setViewportSize({ width: 393, height: 852 });
+    await assertNoOverflow();
+    await page.screenshot({ path: path.join(root, '.cache/portal-public-mobile.png'), fullPage: true });
+    await Promise.all([page.waitForURL(url => url.searchParams.get('category') === 'Teknologi Informasi'), page.getByRole('navigation', { name: 'Kategori pengumuman' }).getByRole('link', { name: 'Teknologi Informasi', exact: true }).click()]);
+    assert.equal(await page.getByRole('navigation', { name: 'Kategori pengumuman' }).getByRole('link', { name: 'Teknologi Informasi', exact: true }).getAttribute('aria-current'), 'page');
+    await page.getByRole('searchbox', { name: 'Cari pengumuman' }).fill('kata-yang-tidak-ada');
+    await Promise.all([page.waitForURL(url => url.searchParams.get('q') === 'kata-yang-tidak-ada'), page.getByRole('button', { name: 'Cari', exact: true }).click()]);
+    await page.getByRole('heading', { name: 'Pengumuman tidak ditemukan' }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('category'), 'Teknologi Informasi');
+    await Promise.all([page.waitForURL(url => url.searchParams.get('category') === 'Umum'), page.getByRole('navigation', { name: 'Kategori pengumuman' }).getByRole('link', { name: 'Umum', exact: true }).click()]);
+    assert.equal(new URL(page.url()).searchParams.get('q'), 'kata-yang-tidak-ada');
+    await Promise.all([page.waitForURL(url => !url.search), page.getByRole('link', { name: 'Reset', exact: true }).click()]);
+    const csrf = await context.request.post(base + '/admin/login', { form: { username, password: 'invalid' } });
+    assert.equal(csrf.status(), 419, 'Missing CSRF token must be rejected');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await login();
+    await page.screenshot({ path: path.join(root, '.cache/portal-admin-desktop.png'), fullPage: true });
+    await page.getByRole('link', { name: 'Tambah pengumuman', exact: true }).first().click();
+    const title = '[Uji browser] Pengumuman ' + Date.now();
+    await page.getByLabel('Judul pengumuman').fill(title);
+    await page.getByLabel('Isi pengumuman', { exact: false }).fill('Isi pengumuman browser.\n<script>window.unexpectedXss = true</script>');
+    await page.getByRole('combobox', { name: 'Kategori', exact: false }).selectOption({ label: 'Maintenance' });
+    await page.getByLabel('Hapus otomatis pada (WIB)').fill('2099-12-31T23:59');
+    await page.locator('#photos').setInputFiles([path.join(root, 'public/assets/office.jpg'), path.join(root, 'public/assets/office.jpg')]);
+    assert.equal(await page.locator('[data-photo-preview] figure').count(), 2);
+    await Promise.all([page.waitForURL('**/admin/announcements'), page.getByRole('button', { name: 'Simpan pengumuman' }).click()]);
+    await page.getByRole('link', { name: title, exact: true }).click();
+    editUrl = page.url();
+    assert.equal(await page.getByLabel('Hapus otomatis pada (WIB)').inputValue(), '2099-12-31T23:59');
+    await page.getByLabel('Hapus otomatis pada (WIB)').fill('');
+    const id = editUrl.match(/announcements\/(\d+)\/edit/)[1];
+    const draftPhoto = await page.locator('.existing-photo img').first().getAttribute('src');
+    const visitor = await browser.newContext({ viewport: { width: 393, height: 852 } });
+    assert.equal((await visitor.request.get(base + '/pengumuman/' + id)).status(), 404);
+    assert.equal((await visitor.request.get(draftPhoto)).status(), 404);
+    await page.getByLabel('Status', { exact: false }).selectOption('published');
+    await page.getByLabel('Sematkan pengumuman').check();
+    await page.getByLabel('Hapus foto 1', { exact: true }).check();
+    await page.locator('#photos').setInputFiles(path.join(root, 'public/assets/office.jpg'));
+    await Promise.all([page.waitForURL('**/admin/announcements'), page.getByRole('button', { name: 'Simpan pengumuman' }).click()]);
+    const publicPage = await visitor.newPage();
+    await publicPage.goto(base + '/pengumuman/' + id);
+    await publicPage.getByRole('heading', { name: title, exact: true }).waitFor();
+    assert.equal(await publicPage.evaluate(() => window.unexpectedXss), undefined);
+    await publicPage.screenshot({ path: path.join(root, '.cache/portal-detail-mobile.png'), fullPage: true });
+    assert.equal(await publicPage.locator('.article-cover, .photo-gallery img').count(), 2);
+    for (const image of await publicPage.locator('.article-cover, .photo-gallery img').all()) {
+      assert.equal((await visitor.request.get(await image.getAttribute('src'))).status(), 200);
+    }
+    assert.equal((await visitor.request.get(draftPhoto)).status(), 404);
+    await visitor.close();
+    await page.goto(editUrl);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await assertNoOverflow();
+    await page.screenshot({ path: path.join(root, '.cache/portal-admin-mobile.png'), fullPage: true });
+    await page.getByRole('link', { name: 'Daftar pengumuman', exact: true }).click();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    page.once('dialog', dialog => dialog.accept());
+    await Promise.all([page.waitForURL('**/admin/announcements'), page.getByRole('button', { name: 'Hapus ' + title, exact: true }).click()]);
+    editUrl = undefined;
+    assert.equal(await page.getByRole('link', { name: title, exact: true }).count(), 0);
+    await page.getByRole('link', { name: 'Log penghapusan', exact: true }).click();
+    await page.getByRole('heading', { name: 'Log penghapusan', exact: true }).waitFor();
+    await page.getByRole('searchbox', { name: 'Cari judul dalam log' }).fill(title);
+    await Promise.all([page.waitForURL(url => url.searchParams.get('q') === title), page.getByRole('button', { name: 'Cari', exact: true }).click()]);
+    await page.getByText(title, { exact: true }).waitFor();
+    assert.equal(await page.getByRole('table').getByText('Manual', { exact: true }).count(), 1);
+    for (const width of [393, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await assertNoOverflow();
+      await page.screenshot({ path: path.join(root, '.cache/portal-deletion-logs-' + width + '.png'), fullPage: true });
+    }
+    await Promise.all([page.waitForURL('**/admin/login'), page.getByRole('button', { name: 'Keluar' }).click()]);
+    await page.goto(base + '/admin');
+    assert.ok(page.url().endsWith('/admin/login'));
+    assert.deepEqual(errors, []);
+    assert.deepEqual(external, []);
+    const result = { status: 'passed', checks: ['Maintenance category, deletion schedule persistence and cancellation, admin deletion logs', 'building gallery manual navigation, keyboard, autoplay, reduced motion and pause', 'responsive layout at 320/393/768/1024/1440px', 'category tabs preserve search and reset correctly', 'search empty state', 'persistent light/dark/system theme', 'category menu keyboard dismissal', 'CSRF rejection', 'admin login/logout', 'draft access protection', 'multiple image preview/upload', 'edit/publish/remove image', 'escaped public content', 'delete confirmation', 'local assets only'], screenshots: ['portal-public-desktop.png', 'portal-public-mobile.png', 'portal-admin-desktop.png', 'portal-admin-mobile.png', 'portal-login-desktop.png', 'portal-detail-mobile.png'] };
+    fs.writeFileSync(path.join(root, '.cache/portal-browser-validation.json'), JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result));
+  } finally {
+    if (editUrl) {
+      try {
+        await login();
+        await page.goto(editUrl);
+        const token = await page.locator('input[name="_token"]').first().inputValue();
+        const deleteUrl = editUrl.replace(/\/edit$/, '');
+        await context.request.post(deleteUrl, { form: { _token: token, _method: 'DELETE' } });
+      } catch { console.error('Cleanup required for browser test announcement.'); }
+    }
+    await browser.close();
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

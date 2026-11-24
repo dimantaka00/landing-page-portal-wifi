@@ -1,0 +1,11 @@
+{
+    "name":  "landing-page-portal-wifi-tests",
+    "version":  "1.0.0",
+    "private":  true,
+    "scripts":  {
+                    "test:browser":  "node tests/browser/portal.cjs"
+                },
+    "devDependencies":  {
+                            "@playwright/test":  "1.63.0"
+                        }
+}

@@ -1,0 +1,1 @@
+<a class="brand" href="{{ route('home') }}" aria-label="Beranda {{ config('portal.office') }}"><span class="brand-emblem"><img src="{{ asset('assets/logo-kemensos.png') }}" alt="Logo Kementerian Sosial Republik Indonesia" width="48" height="52"></span><span class="brand-copy"><strong>{{ config('portal.office') }}</strong><small>{{ config('portal.unit') }}</small></span></a>
