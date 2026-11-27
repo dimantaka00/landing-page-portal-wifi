@@ -203,7 +203,13 @@ Untuk pemasangan baru: clone repository, jalankan composer install, salin .env.e
 
 Docker menggunakan PHP 8.4 + Apache dengan document root public serta service scheduler terpisah. Instal Docker Engine/Desktop dan Docker Compose terlebih dahulu.
 
-Dari folder proyek, salin konfigurasi contoh (jangan unggah docker.env):
+Untuk Windows, jalankan dari folder proyek:
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-docker.ps1
+~~~
+Skrip membuat docker.env hanya jika belum tersedia, membangun image dari kode terbaru, menjalankan app beserta scheduler, dan menunggu pemeriksaan kesehatan berhasil. Konfigurasi dan volume yang sudah ada dipertahankan. Gunakan -NoBuild untuk menjalankan image yang sudah dibangun, atau -EnvFile PATH dan -ProjectName NAMA untuk instalasi terpisah.
+
+Sebagai alternatif, salin konfigurasi contoh (jangan unggah docker.env):
 ~~~powershell
 Copy-Item docker.env.example docker.env
 docker compose --env-file docker.env up -d --build --wait
@@ -252,3 +258,4 @@ Administrator dapat mengelola akun dan pengumuman. Pengelola pengumuman dapat me
 Penonaktifan akun, penggantian password, atau perubahan akses mencabut sesi lama pada permintaan berikutnya, termasuk akses foto draf. Administrator tidak dapat menonaktifkan atau menurunkan peran akun yang sedang dipakai. Untuk pemulihan akses melalui server, gunakan perintah portal:admin dengan email akun yang bersangkutan.
 
 Pada Docker, build ulang lalu jalankan Compose agar migrasi terbaru diterapkan. Kredensial akun instalasi lokal maupun password pengguna tidak disertakan dalam repository. Uji alur pengguna melalui node tests/browser/users.cjs menggunakan server lokal di 127.0.0.1:8011.
+Uji Docker terisolasi: jalankan node tests/browser/docker.cjs setelah image dibangun. Pengujian memakai project portal-wifi-docker-test di port 18011, mencakup pengaturan pengguna, login editor, pencabutan sesi, persistensi foto/kunci saat container dibuat ulang, dan scheduler penghapusan. Pengujian membuat data contoh hanya di volume project uji tersebut.
